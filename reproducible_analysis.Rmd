@@ -1,0 +1,565 @@
+---
+title: "Tissue-specific multivariable Mendelian randomization analysis on the risk of Alzheimer's disease"
+author: "Ryan Liu, Chong Jin"
+date: "10/08/2022"
+output:
+  html_document:
+    toc: true
+    theme: united
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+# Framework
+
+In this project, we strive to identify how the gene expression in blood and brain mediate the causal effects of intelligence and educational attainment on the risk of Alzheimer's disease.
+
+The idea of elucidating the causal pathways mediated by multiple tissues is from:
+
+Leyden, Genevieve M., et al. "Harnessing tissue-specific genetic variation to dissect putative causal pathways between body mass index and cardiometabolic phenotypes." The American Journal of Human Genetics 109.2 (2022): 240-252.
+
+The idea of finding out independent effects of educational attainment and intelligence on the risk of Alzheimer's disease comes from:
+
+Anderson, Emma L., et al. "Education, intelligence and Alzheimer’s disease: evidence from a multivariable two-sample Mendelian randomization study." International journal of epidemiology 49.4 (2020): 1163-1172.
+
+Datasets:
+
+1. Savage et al.: The intelligence GWAS dataset. The study was published as:
+
+  Savage, Jeanne E., et al. 2018. “Genome-Wide Association Meta-Analysis in 269,867 Individuals Identifies New Genetic and Functional Links to Intelligence.” Nature Genetics 50 (7): 912–19.
+
+2. Hill et al.: The intelligence GWAS dataset through multi-trait analysis using an earlier study by Okbay et al. Only data after LD clumping are available. The study was published as:
+  
+  Hill, W. D., R. E. Marioni, O. Maghzian, S. J. Ritchie, S. P. Hagenaars, A. M. McIntosh, C. R. Gale, G. Davies, and I. J. Deary. 2019. “A Combined Analysis of Genetically Correlated Traits Identifies 187 Loci and a Role for Neurogenesis and Myelination in Intelligence.” Molecular Psychiatry 24 (2): 169–81.
+
+3. Okbay et al.: The educational attainment GWAS dataset. The full GWAS summary statistics does not include the 23andme samples, while the statistics after LD clumping has them. 
+The latter one is used when selecting the instrumental variables while the former one is used during colocalization analysis. The study was published as:
+  
+  Okbay, Aysu, et al. "Polygenic prediction of educational attainment within and between families from genome-wide association analyses in 3 million individuals." Nature genetics 54.4 (2022): 437-449.
+
+4. IGAP late stage Alzheimer's disease dataset: from the IEU OpenGWAS dataset https://gwas.mrcieu.ac.uk/.
+
+5. eQTL of brain: BrainMeta_cis_eqtl_summary.tar.gz (hg19) (2.6 GB) from https://yanglab.westlake.edu.cn/software/smr/#eQTLsummarydata.
+
+6. eQTL of blood: cage_eqtl_data_hg19.tgz (hg19) (3.8 GB) from https://yanglab.westlake.edu.cn/software/smr/#eQTLsummarydata.
+
+
+The colocalization analysis:
+
+1. IV selection: from Savage et al.; then use Savage et al. GWAS summary statistics to perform colocalization with eQTL summary statistics of blood and brain.
+
+2. IV selection: from Hill et al.; then use Savage et al. GWAS summary statistics to perform colocalization with eQTL summary statistics of blood and brain.
+
+3. IV selection: from Okbay et al.; then use Okbay et al. GWAS summary statistics to perform colocalization with eQTL summary statistics of blood and brain.
+
+<!-- 4. IV selection is from the combination of Okbay and Savage et al.; use Savage et al. GWAS summary statistics to perform colocalization with eQTL summary statistics of blood and brain. -->
+
+<!-- 5. IV selection is from the combination of Okbay and Savage et al.; use Okbay et al. GWAS summary statistics to perform colocalization with eQTL summary statistics of blood and brain. -->
+
+
+Below, we illustrate the instrumental variables that we are using:
+
+
+## Savage et al. (Nature Genetics 2018) Intelligence
+
+
+```{r packages, results='hide'}
+library(tidyverse)
+library(qqman)
+library(TwoSampleMR)
+add_CI = function(x) {
+  x$CI_lower = x$b - 1.96 * x$se
+  x$CI_upper = x$b + 1.96 * x$se
+  x
+}
+```
+
+```{r savage_gwas}
+IV_file = "analysis_IV_Savage_coloc_Savage_BrainMeta_cis_eqtl_summary/IV_dataset.csv"
+if (file.exists(IV_file)) {
+  IVs = read_csv(IV_file)
+  print(max(IVs$pval.exposure))
+  manhattan(IVs, chr="chr.exposure", bp="pos.exposure", snp="SNP", p="pval.exposure", main = "IVs from Savage GWAS")
+}
+```
+
+## Hill et al. (Molecular Psychiatry 2019) Intelligence with multi-trait analysis
+
+```{r hill_gwas}
+IV_file = "analysis_IV_Hill_coloc_Savage_BrainMeta_cis_eqtl_summary/IV_dataset.csv"
+if (file.exists(IV_file)) {
+  IVs = read_csv(IV_file)
+  print(max(IVs$pval.exposure))
+  manhattan(IVs, chr="chr.exposure", bp="pos.exposure", snp="SNP", p="pval.exposure", main = "IVs from Hill GWAS")
+}
+```
+
+
+## Okbay et al. (Nature Genetics 2022) Educational attainment
+
+```{r okbay_gwas}
+IV_file = "analysis_IV_Okbay_coloc_Okbay_BrainMeta_cis_eqtl_summary/IV_dataset.csv"
+if (file.exists(IV_file)) {
+  IVs = read_csv(IV_file)
+  print(max(IVs$pval.exposure))
+  manhattan(IVs, chr="chr.exposure", bp="pos.exposure", snp="SNP", p="pval.exposure", main = "IVs from Okbay GWAS")
+}
+```
+
+# Mendelian randomization analysis
+
+## Savage et al. (Nature Genetics 2018) Intelligence and Okbay et al. (Nature Genetics 2022) Educational attainment
+
+This analysis is described in `run_coloc_all.R``. From Okbay et al. we take the summary statistics of the preclumped data with p-value cutoff 1e-5. From Savage et al., we obtain data by `extract_instruments("ebi-a-GCST006250", r2=0.01, kb=10000, p1=1e-5)`. Next, we combine the GWAS summary statistics from the two studies the same time and perform LD clumping using the cutoff of r2=0.001. We can partition the list of combined SNPs by whether they are from Savage et al. (715 SNPs) or from Okbay et al (755 SNPs). For each of the list of SNPs from the educational attainment studies and the educational attainment studies, we use `coloc.abp()` to obtain SNPs colocalizing with blood tissue expression and brain tissue expression.
+
+### Multivariable MR
+
+`analysis_IV_OkbaySavage_coloc_Okbay_BrainMeta_cis_eqtl_summary/`
+
+`analysis_IV_OkbaySavage_coloc_Okbay_cage_eqtl_data/`
+
+`analysis_IV_OkbaySavage_coloc_Savage_BrainMeta_cis_eqtl_summary/`
+
+`analysis_IV_OkbaySavage_coloc_Savage_cage_eqtl_data/`
+
+```{r OkbayOkbay_SavageSavage_multivariable}
+#MVMR
+exposure_edu_data <- read_csv('analysis_IV_OkbaySavage_coloc_Okbay_cage_eqtl_data/IV_dataset.csv')
+exposure_IQ_data <- read_csv('analysis_IV_OkbaySavage_coloc_Savage_cage_eqtl_data/IV_dataset.csv')
+exposure_shared_SNPs <- intersect(exposure_edu_data$SNP, exposure_IQ_data$SNP)
+exposure_edu_data <- exposure_edu_data[match(exposure_shared_SNPs, exposure_edu_data$SNP), ]
+exposure_IQ_data <- exposure_edu_data[match(exposure_shared_SNPs, exposure_IQ_data$SNP), ]
+
+coloc_brain_edu <- read.csv('analysis_IV_OkbaySavage_coloc_Okbay_BrainMeta_cis_eqtl_summary/coloc_vector_expression_combined.csv')
+coloc_cage_edu <- read.csv('analysis_IV_OkbaySavage_coloc_Okbay_cage_eqtl_data/coloc_vector_expression_combined.csv')
+coloc_brain_IQ <- read.csv('analysis_IV_OkbaySavage_coloc_Savage_BrainMeta_cis_eqtl_summary/coloc_vector_expression_combined.csv')
+coloc_cage_IQ <- read.csv('analysis_IV_OkbaySavage_coloc_Savage_cage_eqtl_data/coloc_vector_expression_combined.csv')
+coloc_brain_edu <- dplyr::filter(coloc_brain_edu,is_coloc)
+coloc_cage_edu <- dplyr::filter(coloc_cage_edu,is_coloc)
+coloc_brain_IQ <- dplyr::filter(coloc_brain_IQ,is_coloc)
+coloc_cage_IQ <- dplyr::filter(coloc_cage_IQ,is_coloc)
+coloc_brain_edu_snps <- coloc_brain_edu[,1]
+coloc_cage_edu_snps <- coloc_cage_edu[,1]
+coloc_brain_IQ_snps <- coloc_brain_IQ[,1]
+coloc_cage_IQ_snps <- coloc_cage_IQ[,1]
+coloc_brain_edu_snps <- intersect(exposure_shared_SNPs, coloc_brain_edu_snps)
+coloc_cage_edu_snps <- intersect(exposure_shared_SNPs, coloc_cage_edu_snps)
+coloc_brain_IQ_snps <- intersect(exposure_shared_SNPs, coloc_brain_IQ_snps)
+coloc_cage_IQ_snps <- intersect(exposure_shared_SNPs, coloc_cage_IQ_snps)
+
+exposure_edu_data_brain <- dplyr::filter(exposure_edu_data,SNP %in% coloc_brain_edu_snps | SNP %in% coloc_cage_edu_snps)
+exposure_edu_data_brain[(exposure_edu_data_brain$SNP %in% coloc_cage_edu_snps) & !(exposure_edu_data_brain$SNP %in% coloc_brain_edu_snps), 'beta.exposure'] <- 0 
+exposure_edu_data_brain[(exposure_edu_data_brain$SNP %in% coloc_cage_edu_snps) & !(exposure_edu_data_brain$SNP %in% coloc_brain_edu_snps), 'se.exposure'] <- 0
+exposure_edu_data_brain[(exposure_edu_data_brain$SNP %in% coloc_cage_edu_snps) & !(exposure_edu_data_brain$SNP %in% coloc_brain_edu_snps), 'pval.exposure'] <- 0
+exposure_edu_data_cage <- dplyr::filter(exposure_edu_data,SNP %in% coloc_brain_edu_snps | SNP %in% coloc_cage_edu_snps)
+exposure_edu_data_cage[(exposure_edu_data_brain$SNP %in% coloc_brain_edu_snps) & !(exposure_edu_data_brain$SNP %in% coloc_cage_edu_snps), 'beta.exposure'] <- 0
+exposure_edu_data_cage[(exposure_edu_data_brain$SNP %in% coloc_brain_edu_snps) & !(exposure_edu_data_brain$SNP %in% coloc_cage_edu_snps), 'se.exposure'] <- 0
+exposure_edu_data_cage[(exposure_edu_data_brain$SNP %in% coloc_brain_edu_snps) & !(exposure_edu_data_brain$SNP %in% coloc_cage_edu_snps), 'pval.exposure'] <- 0
+exposure_IQ_data_brain <- dplyr::filter(exposure_IQ_data,SNP %in% coloc_brain_IQ_snps | SNP %in% coloc_cage_IQ_snps)
+exposure_IQ_data_brain[(exposure_IQ_data_brain$SNP %in% coloc_cage_IQ_snps) & !(exposure_IQ_data_brain$SNP %in% coloc_brain_IQ_snps), 'beta.exposure'] <- 0 
+exposure_IQ_data_brain[(exposure_IQ_data_brain$SNP %in% coloc_cage_IQ_snps) & !(exposure_IQ_data_brain$SNP %in% coloc_brain_IQ_snps), 'se.exposure'] <- 0
+exposure_IQ_data_brain[(exposure_IQ_data_brain$SNP %in% coloc_cage_IQ_snps) & !(exposure_IQ_data_brain$SNP %in% coloc_brain_IQ_snps), 'pval.exposure'] <- 0
+exposure_IQ_data_cage <- dplyr::filter(exposure_IQ_data,SNP %in% coloc_brain_IQ_snps | SNP %in% coloc_cage_IQ_snps)
+exposure_IQ_data_cage[(exposure_IQ_data_brain$SNP %in% coloc_brain_IQ_snps) & !(exposure_IQ_data_brain$SNP %in% coloc_cage_IQ_snps), 'beta.exposure'] <- 0
+exposure_IQ_data_cage[(exposure_IQ_data_brain$SNP %in% coloc_brain_IQ_snps) & !(exposure_IQ_data_brain$SNP %in% coloc_cage_IQ_snps), 'se.exposure'] <- 0
+exposure_IQ_data_cage[(exposure_IQ_data_brain$SNP %in% coloc_brain_IQ_snps) & !(exposure_IQ_data_brain$SNP %in% coloc_cage_IQ_snps), 'pval.exposure'] <- 0
+exposure_edu_data_brain['id.exposure']<-'Savage.2018.brain'
+exposure_edu_data_brain['exposure']<-'Savage.2018.brain'
+exposure_edu_data_cage['id.exposure']<-'Savage.2018.cage'
+exposure_edu_data_cage['exposure']<-'Savage.2018.cage'
+exposure_IQ_data_brain['id.exposure']<-'Okbay.2022.brain'
+exposure_IQ_data_brain['exposure']<-'Okbay.2022.brain'
+exposure_IQ_data_cage['id.exposure']<-'Okbay.2022.cage'
+exposure_IQ_data_cage['exposure']<-'Okbay.2022.cage'
+exposure_data_all <- do.call("rbind", list(exposure_edu_data_brain,exposure_edu_data_cage,exposure_IQ_data_brain,exposure_IQ_data_cage))
+outcome_data_mv <- extract_outcome_data(snps=exposure_data_all$SNP, outcomes = "ebi-a-GCST002245")
+mvdat <- mv_harmonise_data(exposure_data_all,outcome_data_mv)
+# Harmonising Savage.2018.brain (Savage.2018.brain) and Alzheimer's disease (late onset) || id:ebi-a-GCST002245 (ebi-a-GCST002245)
+# Removing the following SNPs for being palindromic with intermediate allele frequencies:
+# rs10929474, rs14184, rs1689510, rs28451864, rs7040995, rs72801843, rs9496630
+res_main_analysis <- mv_multiple(mvdat)$result
+add_CI(res_main_analysis)
+```
+
+```{r mirrored_manhattan}
+library(hudson)  # devtools::install_github('anastasia-lucas/hudson')
+library(grid)
+library(VennDiagram)
+
+exposure_IQ_data_for_hudson = exposure_IQ_data %>% rename(POS = pos.exposure, CHR = chr.exposure, pvalue = pval.exposure)
+exposure_IQ_data_for_hudson$PHE = "No colocalization"
+exposure_IQ_data_for_hudson$PHE[match(setdiff(coloc_brain_IQ_snps, coloc_cage_IQ_snps), exposure_IQ_data_for_hudson$SNP)] = "Coloc. with brain eQTL"
+exposure_IQ_data_for_hudson$PHE[match(setdiff(coloc_cage_IQ_snps, coloc_brain_IQ_snps), exposure_IQ_data_for_hudson$SNP)] = "Coloc. with blood eQTL"
+exposure_IQ_data_for_hudson$PHE[match(intersect(coloc_cage_IQ_snps, coloc_brain_IQ_snps), exposure_IQ_data_for_hudson$SNP)] = "Coloc. with both tissue eQTL"
+exposure_IQ_data_for_hudson$PHE = factor(exposure_IQ_data_for_hudson$PHE, levels = c("No colocalization",
+                                                                                     "Coloc. with blood eQTL",
+                                                                                     "Coloc. with brain eQTL",
+                                                                                     "Coloc. with both tissue eQTL"))
+exposure_edu_data_for_hudson = exposure_edu_data %>% rename(POS = pos.exposure, CHR = chr.exposure, pvalue = pval.exposure)
+exposure_edu_data_for_hudson$PHE = "No colocalization"
+exposure_edu_data_for_hudson$PHE[match(setdiff(coloc_brain_edu_snps, coloc_cage_edu_snps), exposure_edu_data_for_hudson$SNP)] = "Coloc. with brain eQTL"
+exposure_edu_data_for_hudson$PHE[match(setdiff(coloc_cage_edu_snps, coloc_brain_edu_snps), exposure_edu_data_for_hudson$SNP)] = "Coloc. with blood eQTL"
+exposure_edu_data_for_hudson$PHE[match(intersect(coloc_cage_edu_snps, coloc_brain_edu_snps), exposure_edu_data_for_hudson$SNP)] = "Coloc. with both tissue eQTL"
+exposure_edu_data_for_hudson$PHE = factor(exposure_edu_data_for_hudson$PHE, levels = c("No colocalization",
+                                                                                     "Coloc. with blood eQTL",
+                                                                                     "Coloc. with brain eQTL",
+                                                                                     "Coloc. with both tissue eQTL"))
+# mirrored manhattan plot
+phemirror(top=exposure_IQ_data_for_hudson, bottom = exposure_edu_data_for_hudson,
+          toptitle = "Intelligence GWAS", bottomtitle = "Educational attainment GWAS",
+          groupcolors = rgb(t(col2rgb(c("grey", "lightblue", "violet", "purple"))), alpha = 0.5, maxColorValue = 255), wi = 13)
+
+# Venn diagram
+library(gridExtra)
+library(cowplot)
+p1 = venn.diagram(list(blood=coloc_cage_IQ_snps, brain=coloc_brain_IQ_snps), filename = NULL, sub = "Colocalized SNPs in Intelligence GWAS")
+# Venn diagram
+p2 = venn.diagram(list(blood=coloc_cage_edu_snps, brain=coloc_brain_IQ_snps), filename = NULL, sub = "Colocalized SNPs in Educational attainment GWAS")
+plot_grid(p1, p2, align = "h", ncol = 2, rel_widths = c(1/2, 1/2))
+```
+
+**SNPs showing evidence of genetic colocalization between variants selected as instrumental variables and gene expression derived from brain, blood, or both.** A mirrored Manhattan plot on the loci and their association with intelligence (upper plot) and educational attainment (lower plot), which illustrated evidence for colocalization with gene expression (determined by a PPA4 > 0.8) in brain tissue (pink), blood (blue), or both (purple).
+
+
+### Univariable MR, brain specific, Okbay (Educational attainment)
+
+```{r OkbayOkbay_SavageSavage_univariable_brain_edu}
+#UnivariableMR
+# ao <- available_outcomes()
+exposure_edu_data <- read_csv('analysis_IV_OkbaySavage_coloc_Okbay_cage_eqtl_data/IV_dataset.csv')
+outcome_data <- extract_outcome_data(snps=coloc_brain_edu_snps, outcomes = "ebi-a-GCST002245")
+dat <- harmonise_data(exposure_edu_data, outcome_data)
+res <- mr(dat)
+add_CI(res)
+```
+
+### Univariable MR, blood specific, Okbay (Educational attainment)
+
+```{r OkbayOkbay_SavageSavage_univariable_blood_edu}
+#UnivariableMR
+# ao <- available_outcomes()
+exposure_IQ_data <- read_csv('analysis_IV_OkbaySavage_coloc_Savage_cage_eqtl_data/IV_dataset.csv')
+outcome_data <- extract_outcome_data(snps=coloc_cage_IQ_snps, outcomes = "ebi-a-GCST002245")
+dat <- harmonise_data(exposure_IQ_data, outcome_data)
+res <- mr(dat)
+add_CI(res)
+```
+
+### Univariable MR, brain specific, Savage (Intelligence)
+
+```{r OkbayOkbay_SavageSavage_univariable_brain_IQ}
+#UnivariableMR
+# ao <- available_outcomes()
+exposure_IQ_data <- read_csv('analysis_IV_OkbaySavage_coloc_Savage_cage_eqtl_data/IV_dataset.csv')
+outcome_data <- extract_outcome_data(snps=coloc_brain_IQ_snps, outcomes = "ebi-a-GCST002245")
+dat <- harmonise_data(exposure_IQ_data, outcome_data)
+res <- mr(dat)
+add_CI(res)
+```
+
+### Univariable MR, blood specific, Savage (Intelligence)
+
+```{r OkbayOkbay_SavageSavage_univariable_blood_IQ}
+#UnivariableMR
+# ao <- available_outcomes()
+exposure_edu_data <- read_csv('analysis_IV_OkbaySavage_coloc_Okbay_cage_eqtl_data/IV_dataset.csv')
+outcome_data <- extract_outcome_data(snps=coloc_cage_edu_snps, outcomes = "ebi-a-GCST002245")
+dat <- harmonise_data(exposure_edu_data, outcome_data)
+res <- mr(dat)
+add_CI(res)
+```
+
+## Savage et al. (Nature Genetics 2018) Intelligence
+
+Multivariable MR and Univariable MR:
+
+`analysis_IV_Savage_coloc_Savage_BrainMeta_cis_eqtl_summary/`
+
+`analysis_IV_Savage_coloc_Savage_cage_eqtl_data/`
+
+### Univariable MR (all IVs)
+
+```{r SavageSavage_univariable_all_IVs}
+#UnivariableMR
+# ao <- available_outcomes()
+exposure_data <- read_csv('analysis_IV_Savage_coloc_Savage_cage_eqtl_data/IV_dataset.csv')
+outcome_data <- extract_outcome_data(snps=exposure_data$SNP, outcomes = "ebi-a-GCST002245")
+dat <- harmonise_data(exposure_data, outcome_data)
+res_Savage <- mr(dat)
+add_CI(res_Savage)
+```
+
+### Univariable MR, brain specific
+
+```{r SavageSavage_univariable_brain}
+#UnivariableMR
+# ao <- available_outcomes()
+exposure_data <- read_csv('analysis_IV_Savage_coloc_Savage_cage_eqtl_data/IV_dataset.csv')
+coloc_brain <- read.csv('analysis_IV_Savage_coloc_Savage_BrainMeta_cis_eqtl_summary/coloc_vector_expression_combined.csv')
+coloc_brain1 <- dplyr::filter(coloc_brain,is_coloc) 
+coloc_brain_snps <- coloc_brain1[,1]
+outcome_data <- extract_outcome_data(snps=coloc_brain_snps, outcomes = "ebi-a-GCST002245")
+dat <- harmonise_data(exposure_data, outcome_data)
+res_Savage_brain <- mr(dat)
+add_CI(res_Savage_brain)
+```
+
+### Univariable MR, blood specific
+
+```{r SavageSavage_univariable_blood}
+#UnivariableMR
+# ao <- available_outcomes()
+exposure_data <- read_csv('analysis_IV_Savage_coloc_Savage_cage_eqtl_data/IV_dataset.csv')
+coloc_cage <- read.csv('analysis_IV_Savage_coloc_Savage_cage_eqtl_data/coloc_vector_expression_combined.csv')
+coloc_cage1 <- dplyr::filter(coloc_cage,is_coloc)
+coloc_cage_snps <- coloc_cage1[,1]
+outcome_data <- extract_outcome_data(snps=coloc_cage_snps, outcomes = "ebi-a-GCST002245")
+dat <- harmonise_data(exposure_data, outcome_data)
+res_Savage_blood <- mr(dat)
+add_CI(res_Savage_blood)
+```
+
+### Multivariable MR, brain and blood specific
+
+```{r SavageSavage_multivariable}
+#MVMR
+coloc_brain <- read.csv('analysis_IV_Savage_coloc_Savage_BrainMeta_cis_eqtl_summary/coloc_vector_expression_combined.csv')
+coloc_cage <- read.csv('analysis_IV_Savage_coloc_Savage_cage_eqtl_data/coloc_vector_expression_combined.csv')
+coloc_brain1 <- dplyr::filter(coloc_brain,is_coloc) 
+coloc_cage1 <- dplyr::filter(coloc_cage,is_coloc)
+coloc_brain_snps <- coloc_brain1[,1]
+coloc_cage_snps <- coloc_cage1[,1]
+
+coloc_combined_snps <- unique(c(coloc_brain_snps, coloc_cage_snps))
+outcome_data_mv <- extract_outcome_data(snps=coloc_combined_snps, outcomes = "ebi-a-GCST002245")
+
+exposure_data_brain <- dplyr::filter(exposure_data,SNP %in% coloc_brain_snps | SNP %in% coloc_cage_snps) 
+exposure_data_brain[(exposure_data_brain$SNP %in% coloc_cage_snps) & !(exposure_data_brain$SNP %in% coloc_brain_snps), 'beta.exposure'] <- 0 
+exposure_data_brain[(exposure_data_brain$SNP %in% coloc_cage_snps) & !(exposure_data_brain$SNP %in% coloc_brain_snps), 'se.exposure'] <- 0
+exposure_data_brain[(exposure_data_brain$SNP %in% coloc_cage_snps) & !(exposure_data_brain$SNP %in% coloc_brain_snps), 'pval.exposure'] <- 0
+exposure_data_cage <- dplyr::filter(exposure_data,SNP %in% coloc_brain_snps | SNP %in% coloc_cage_snps)
+exposure_data_cage[(exposure_data_brain$SNP %in% coloc_brain_snps) & !(exposure_data_brain$SNP %in% coloc_cage_snps), 'beta.exposure'] <- 0
+exposure_data_cage[(exposure_data_brain$SNP %in% coloc_brain_snps) & !(exposure_data_brain$SNP %in% coloc_cage_snps), 'se.exposure'] <- 0
+exposure_data_cage[(exposure_data_brain$SNP %in% coloc_brain_snps) & !(exposure_data_brain$SNP %in% coloc_cage_snps), 'pval.exposure'] <- 0
+exposure_data_brain['id.exposure']<-'SavageSavage.2018.brain'
+exposure_data_brain['exposure']<-'SavageSavage.2018.brain'
+exposure_data_cage['id.exposure']<-'SavageSavage.2018.cage'
+exposure_data_cage['exposure']<-'SavageSavage.2018.cage'
+exposure_data_both <- rbind(exposure_data_brain,exposure_data_cage)
+mvdat <- mv_harmonise_data(exposure_data_both,outcome_data_mv)
+res_Savage_brain_blood <- mv_multiple(mvdat)$result
+add_CI(res_Savage_brain_blood)
+```
+
+## Hill et al. (Molecular Psychiatry 2019) Intelligence with multi-trait analysis
+
+Multivariable MR and Univariable MR:
+
+analysis_IV_Hill_coloc_Savage_BrainMeta_cis_eqtl_summary/
+
+analysis_IV_Hill_coloc_Savage_cage_eqtl_data/
+
+### Univariable MR (all IVs)
+
+```{r HillSavage_univariable_all_IVs}
+#UnivariableMR
+# ao <- available_outcomes()
+exposure_data <- read.csv('analysis_IV_Hill_coloc_Savage_cage_eqtl_data/IV_dataset.csv')
+outcome_data <- extract_outcome_data(snps=exposure_data$SNP, outcomes = "ebi-a-GCST002245")
+dat <- harmonise_data(exposure_data, outcome_data)
+res_Hill <- mr(dat)
+add_CI(res_Hill)
+```
+
+### Univariable MR, brain specific
+
+```{r HillSavage_univariable_brain}
+#UnivariableMR
+# ao <- available_outcomes()
+exposure_data <- read.csv('analysis_IV_Hill_coloc_Savage_cage_eqtl_data/IV_dataset.csv')
+coloc_brain <- read.csv('analysis_IV_Hill_coloc_Savage_BrainMeta_cis_eqtl_summary/coloc_vector_expression_combined.csv')
+coloc_brain1 <- dplyr::filter(coloc_brain,is_coloc) 
+coloc_brain_snps <- coloc_brain1[,1]
+outcome_data <- extract_outcome_data(snps=coloc_brain_snps, outcomes = "ebi-a-GCST002245")
+dat <- harmonise_data(exposure_data, outcome_data)
+res_Hill_brain <- mr(dat)
+add_CI(res_Hill_brain)
+```
+
+### Multivariable MR, brain and blood specific
+
+```{r HillSavage_univariable_blood}
+#UnivariableMR
+# ao <- available_outcomes()
+exposure_data <- read.csv('analysis_IV_Hill_coloc_Savage_cage_eqtl_data/IV_dataset.csv')
+coloc_cage <- read.csv('analysis_IV_Hill_coloc_Savage_cage_eqtl_data/coloc_vector_expression_combined.csv')
+coloc_cage1 <- dplyr::filter(coloc_cage,is_coloc)
+coloc_cage_snps <- coloc_cage1[,1]
+outcome_data <- extract_outcome_data(snps=coloc_cage_snps, outcomes = "ebi-a-GCST002245")
+dat <- harmonise_data(exposure_data, outcome_data)
+res_Hill_blood <- mr(dat)
+add_CI(res_Hill_blood)
+```
+
+### Multivariable MR
+
+```{r HillSavage_multivariable}
+#MVMR
+coloc_brain <- read.csv('analysis_IV_Hill_coloc_Savage_BrainMeta_cis_eqtl_summary/coloc_vector_expression_combined.csv')
+coloc_cage <- read.csv('analysis_IV_Hill_coloc_Savage_cage_eqtl_data/coloc_vector_expression_combined.csv')
+coloc_brain1 <- dplyr::filter(coloc_brain,is_coloc) 
+coloc_cage1 <- dplyr::filter(coloc_cage,is_coloc)
+coloc_brain_snps <- coloc_brain1[,1]
+coloc_cage_snps <- coloc_cage1[,1]
+
+coloc_combined_snps <- unique(c(coloc_brain_snps, coloc_cage_snps))
+outcome_data_mv <- extract_outcome_data(snps=coloc_combined_snps, outcomes = "ebi-a-GCST002245")
+
+exposure_data_brain <- dplyr::filter(exposure_data,SNP %in% coloc_brain_snps | SNP %in% coloc_cage_snps) 
+exposure_data_brain[(exposure_data_brain$SNP %in% coloc_cage_snps) & !(exposure_data_brain$SNP %in% coloc_brain_snps), 'beta.exposure'] <- 0 
+exposure_data_brain[(exposure_data_brain$SNP %in% coloc_cage_snps) & !(exposure_data_brain$SNP %in% coloc_brain_snps), 'se.exposure'] <- 0
+exposure_data_brain[(exposure_data_brain$SNP %in% coloc_cage_snps) & !(exposure_data_brain$SNP %in% coloc_brain_snps), 'pval.exposure'] <- 0
+exposure_data_cage <- dplyr::filter(exposure_data,SNP %in% coloc_brain_snps | SNP %in% coloc_cage_snps)
+exposure_data_cage[(exposure_data_brain$SNP %in% coloc_brain_snps) & !(exposure_data_brain$SNP %in% coloc_cage_snps), 'beta.exposure'] <- 0
+exposure_data_cage[(exposure_data_brain$SNP %in% coloc_brain_snps) & !(exposure_data_brain$SNP %in% coloc_cage_snps), 'se.exposure'] <- 0
+exposure_data_cage[(exposure_data_brain$SNP %in% coloc_brain_snps) & !(exposure_data_brain$SNP %in% coloc_cage_snps), 'pval.exposure'] <- 0
+exposure_data_brain['id.exposure']<-'HillSavage.2022.brain'
+exposure_data_brain['exposure']<-'HillSavage.2022.brain'
+exposure_data_cage['id.exposure']<-'HillSavage.2022.cage'
+exposure_data_cage['exposure']<-'HillSavage.2022.cage'
+exposure_data_both <- rbind(exposure_data_brain,exposure_data_cage)
+mvdat <- mv_harmonise_data(exposure_data_both,outcome_data_mv)
+res_Hill_brain_blood <- mv_multiple(mvdat)$result
+add_CI(res_Hill_brain_blood)
+```
+
+## Okbay et al. (Nature Genetics 2022) Educational attainment
+
+Multivariable MR and Univariable MR:
+
+`analysis_IV_Okbay_coloc_Okbay_BrainMeta_cis_eqtl_summary/`
+
+`analysis_IV_Okbay_coloc_Okbay_cage_eqtl_data/`
+
+### Univariable MR (all IVs)
+
+```{r OkbayOkbay_univariable_all_IVs}
+#UnivariableMR
+# ao <- available_outcomes()
+exposure_data <- read.csv('analysis_IV_Okbay_coloc_Okbay_cage_eqtl_data/IV_dataset.csv')
+outcome_data <- extract_outcome_data(snps=exposure_data$SNP, outcomes = "ebi-a-GCST002245")
+dat <- harmonise_data(exposure_data, outcome_data)
+res_Okbay <- mr(dat)
+add_CI(res_Okbay)
+```
+
+### Univariable MR, brain specific
+
+```{r OkbayOkbay_univariable_brain}
+#UnivariableMR
+# ao <- available_outcomes()
+exposure_data <- read.csv('analysis_IV_Okbay_coloc_Okbay_cage_eqtl_data/IV_dataset.csv')
+coloc_brain <- read.csv('analysis_IV_Okbay_coloc_Okbay_BrainMeta_cis_eqtl_summary/coloc_vector_expression_combined.csv')
+coloc_brain1 <- dplyr::filter(coloc_brain,is_coloc) 
+coloc_brain_snps <- coloc_brain1[,1]
+outcome_data <- extract_outcome_data(snps=coloc_brain_snps, outcomes = "ebi-a-GCST002245")
+dat <- harmonise_data(exposure_data, outcome_data)
+res_Okbay_brain <- mr(dat)
+add_CI(res_Okbay_brain)
+```
+
+### Univariable MR, blood specific
+
+```{r OkbayOkbay_univariable_blood}
+#UnivariableMR
+# ao <- available_outcomes()
+exposure_data <- read.csv('analysis_IV_Okbay_coloc_Okbay_cage_eqtl_data/IV_dataset.csv')
+coloc_cage <- read.csv('analysis_IV_Okbay_coloc_Okbay_cage_eqtl_data/coloc_vector_expression_combined.csv')
+coloc_cage1 <- dplyr::filter(coloc_cage,is_coloc)
+coloc_cage_snps <- coloc_cage1[,1]
+outcome_data <- extract_outcome_data(snps=coloc_cage_snps, outcomes = "ebi-a-GCST002245")
+dat <- harmonise_data(exposure_data, outcome_data)
+res_Okbay_blood <- mr(dat)
+add_CI(res_Okbay_blood)
+```
+
+### Multivariable MR, brain and blood specific
+
+```{r OkbayOkbay_multivariable}
+#MVMR
+coloc_brain <- read.csv('analysis_IV_Okbay_coloc_Okbay_BrainMeta_cis_eqtl_summary/coloc_vector_expression_combined.csv')
+coloc_cage <- read.csv('analysis_IV_Okbay_coloc_Okbay_cage_eqtl_data/coloc_vector_expression_combined.csv')
+coloc_brain1 <- dplyr::filter(coloc_brain,is_coloc) 
+coloc_cage1 <- dplyr::filter(coloc_cage,is_coloc)
+coloc_brain_snps <- coloc_brain1[,1]
+coloc_cage_snps <- coloc_cage1[,1]
+
+coloc_combined_snps <- unique(c(coloc_brain_snps, coloc_cage_snps))
+outcome_data_mv <- extract_outcome_data(snps=coloc_combined_snps, outcomes = "ebi-a-GCST002245")
+
+exposure_data_brain <- dplyr::filter(exposure_data,SNP %in% coloc_brain_snps | SNP %in% coloc_cage_snps) 
+exposure_data_brain[(exposure_data_brain$SNP %in% coloc_cage_snps) & !(exposure_data_brain$SNP %in% coloc_brain_snps), 'beta.exposure'] <- 0 
+exposure_data_brain[(exposure_data_brain$SNP %in% coloc_cage_snps) & !(exposure_data_brain$SNP %in% coloc_brain_snps), 'se.exposure'] <- 0
+exposure_data_brain[(exposure_data_brain$SNP %in% coloc_cage_snps) & !(exposure_data_brain$SNP %in% coloc_brain_snps), 'pval.exposure'] <- 0
+exposure_data_cage <- dplyr::filter(exposure_data,SNP %in% coloc_brain_snps | SNP %in% coloc_cage_snps)
+exposure_data_cage[(exposure_data_brain$SNP %in% coloc_brain_snps) & !(exposure_data_brain$SNP %in% coloc_cage_snps), 'beta.exposure'] <- 0
+exposure_data_cage[(exposure_data_brain$SNP %in% coloc_brain_snps) & !(exposure_data_brain$SNP %in% coloc_cage_snps), 'se.exposure'] <- 0
+exposure_data_cage[(exposure_data_brain$SNP %in% coloc_brain_snps) & !(exposure_data_brain$SNP %in% coloc_cage_snps), 'pval.exposure'] <- 0
+exposure_data_brain['id.exposure']<-'OkbayOkbay.2022.brain'
+exposure_data_brain['exposure']<-'OkbayOkbay.2022.brain'
+exposure_data_cage['id.exposure']<-'OkbayOkbay.2022.cage'
+exposure_data_cage['exposure']<-'OkbayOkbay.2022.cage'
+exposure_data_both <- rbind(exposure_data_brain,exposure_data_cage)
+mvdat <- mv_harmonise_data(exposure_data_both,outcome_data_mv)
+res_Okbay_brain_blood <- mv_multiple(mvdat)$result
+add_CI(res_Okbay_brain_blood)
+```
+
+## Forest plot
+
+```{r forest_plot}
+# forest_plot_multi_exposure_MR
+library(forestplot)
+# forest_plot_single_exposure_MR
+res_single_exposure_analysis = rbind(res_Okbay_brain_blood, res_Savage_brain_blood)
+# forest_plot_univariable_MR
+# The 3rd row is IVW estimate from univariable MR:
+res_univariableMR_analysis = rbind(
+  rbind(res_Okbay_brain[3, ], res_Okbay_blood[3, ]),
+  rbind(res_Savage_brain[3, ], res_Savage_blood[3, ])
+)
+res_univariableMR_analysis = res_univariableMR_analysis[, colnames(res_main_analysis)]
+
+
+res_all = rbind(res_univariableMR_analysis,
+                rbind(res_single_exposure_analysis, res_main_analysis))
+res_all$labeltext = c("Univariable MR (education)", "Univariable MR (education)",
+                      "Univariable MR (intelligence)", "Univariable MR (intelligence)",
+                      "Multivariable MR (education)", "Multivariable MR (education)",
+                      "Multivariable MR (intelligence)", "Multivariable MR (intelligence)",
+                      "Multi-exposure Multivariable MR (education)", "Multi-exposure Multivariable MR (education)",
+                      "Multi-exposure Multivariable MR (intelligence)", "Multi-exposure Multivariable MR (intelligence)")
+                       
+res_all$group = c("brain", "blood", "brain", "blood",
+                  "brain", "blood", "brain", "blood",
+                  "brain", "blood", "brain", "blood")
+
+add_CI(res_all) |>
+    group_by(group) |>
+    rename(mean=b, lower=CI_lower, upper=CI_upper) |>
+    forestplot(clip = c(-3, 2.5),
+               ci.vertices = TRUE,
+               ci.vertices.height = 0.05,
+               boxsize = .1,
+               xlab = "Odds ratio per 1-SD change in AD risk (95% CI)") |> 
+    fp_add_lines("steelblue") |> 
+    fp_add_header("MR estimate of exposure on AD risk") |> 
+    fp_set_style(box = c("blue", "darkred") |> lapply(function(x) gpar(fill = x, col = "#555555")),
+                 default = gpar(vertices = TRUE))
+```
+
+**Multivariable Mendelian randomization results using tissue-specific-variants colocalizing with either blood tissue eQTL or brain tissue eQTL.** Forest plot illustrating the odds ratios for every 1-standard deviation (SD) change in risk and 95% confidence intervals (CI). The independent effects are estimated using a tissue-specific multivariable Mendelian randomization model by leveraging brain- and blood-tissue partitioned variants.
